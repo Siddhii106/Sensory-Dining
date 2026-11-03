@@ -2,6 +2,8 @@ from django.conf import settings
 from django.contrib.postgres.fields import ArrayField
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
+from datetime import timedelta
+from django.utils import timezone
 
 class TimestampedModel(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
@@ -111,8 +113,8 @@ class Order(TimestampedModel):
         indexes = [models.Index(fields=["user", "status"])]
 
     @property
-    def is_ambience_ready(self) -> bool:
-        return self.status == self.Status.DELIVERED
+    def allows_ambience(self) -> bool:
+        return self.status != self.Status.CANCELLED
 
     def __str__(self):
         return f"Order {self.external_order_id}"
@@ -161,3 +163,30 @@ class AmbiencePreset(TimestampedModel):
 
     def __str__(self):
         return self.name or f"Preset {self.pk}"
+
+class AmbienceSession(TimestampedModel):
+    class PlaybackState(models.TextChoices):
+        READY = "ready", "Ready"
+        PLAYING = "playing", "Playing"
+        PAUSED = "paused", "Paused"
+        ENDED = "ended", "Ended"
+
+    order = models.OneToOneField(Order, on_delete=models.CASCADE, related_name="ambience_session")
+    criteria = models.JSONField(help_text="Snapshot of AmbiencePayload.to_dict().")
+    track_queue = models.JSONField(default=list, blank=True)
+    track_index = models.PositiveSmallIntegerField(default=0)
+    playback_status = models.CharField(max_length=10, choices=PlaybackState.choices, default=PlaybackState.READY)
+    timer_started_at = models.DateTimeField(help_text="Anchored to order.placed_at.")
+    duration_ms = models.PositiveIntegerField()
+
+    @property
+    def expires_at(self):
+        return self.timer_started_at + timedelta(milliseconds=self.duration_ms)
+
+    def remaining_ms(self) -> int:
+        delta = self.expires_at - timezone.now()
+        return max(0, int(delta.total_seconds() * 1000))
+
+    @property
+    def is_expired(self) -> bool:
+        return self.remaining_ms() == 0
