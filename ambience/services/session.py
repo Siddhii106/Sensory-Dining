@@ -99,7 +99,7 @@ class SessionError(AmbienceUnavailable):
                     "track_index": index,
                     "track_count": len(queue),
                     "current_track": queue[index] if queue and index < len(queue) else None,
-                    "soundscape": session.criteria.get("sounscape", []),
+                    "soundscape": session.criteria.get("soundscape", []),
                     "expires_at": session.expires_at.isoformat(),
                     "remaining_ms": session.remaining_ms(),
                 }
